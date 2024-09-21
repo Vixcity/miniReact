@@ -1,4 +1,4 @@
-import { describe, descript, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { peek, push, pop, Heap, Node } from "../src/SchedulerMinHeap";
 
 let idCounter = 0;
@@ -18,17 +18,17 @@ describe("text min heap", () => {
 
   it("heap length === 1", () => {
     const tasks: Heap<Node> = [createNode(1)];
-    expect(peek(tasks)).toEqual(createNode(1));
+    expect(peek(tasks)?.sortIndex).toEqual(1);
   });
 
   it("heap length > 1", () => {
     const tasks: Heap<Node> = [createNode(1)];
     push(tasks, createNode(2));
     push(tasks, createNode(3));
-    expect(peek(tasks)).toEqual(createNode(1));
+    expect(peek(tasks)?.sortIndex).toEqual(1);
     push(tasks, createNode(0));
-    expect(peek(tasks)).toEqual(createNode(0));
+    expect(peek(tasks)?.sortIndex).toEqual(0);
     pop(tasks);
-    expect(peek(tasks)).toEqual(createNode(1));
+    expect(peek(tasks)?.sortIndex).toEqual(1);
   });
 });
