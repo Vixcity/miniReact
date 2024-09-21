@@ -44,9 +44,11 @@ let frameInterval = 5;
 // 记录是否正在执行任务，是否有work在进行
 // 锁，防止重复调度
 let isPreformingWork = false;
+// 主线程是否被调度
 let isHostCallbackScheduled = false;
 
-// TODO: 实现 shouldYieldToHost 函数
+let isMessageLoopRunning = false;
+
 function shouldYieldToHost() {
   const timeElapsed = getCurrentTime() - startTime;
 
@@ -105,7 +107,55 @@ function scheduleCallback(priorityLevel: PriorityLevel, callback: Callback) {
   }
 }
 
-function requestHostCallback() {}
+// 请求主线程调度
+function requestHostCallback() {
+  if (!isMessageLoopRunning) {
+    isMessageLoopRunning = true;
+    schedulePerformWorkUntilDeadline();
+  }
+}
+
+// 处理任务队列，执行任务，直到没有任务可以执行
+const performWorkUntilDeadline = () => {
+  if (!isMessageLoopRunning) {
+    const currentTime = getCurrentTime();
+    startTime = currentTime; // 记录时间切片(work)的起始值，时间戳
+    let hasMoreWork = true;
+    try {
+      hasMoreWork = flushWork(currentTime);
+    } finally {
+      if (hasMoreWork) {
+        schedulePerformWorkUntilDeadline();
+      } else {
+        isMessageLoopRunning = false;
+      }
+    }
+  }
+};
+
+// 创建宏任务
+const channel = new MessageChannel();
+const port = channel.port2;
+channel.port1.onmessage = performWorkUntilDeadline;
+// 执行函数是在这里的
+function schedulePerformWorkUntilDeadline() {
+  port.postMessage(null);
+}
+
+// 处理任务队列，执行任务，直到没有任务可以执行
+function flushWork(initialTime: number): boolean {
+  isHostCallbackScheduled = false;
+  isPreformingWork = true;
+  let previousPriorityLevel = currentPriorityLevel;
+
+  try {
+    return workLoop(initialTime);
+  } finally {
+    currentTask = null;
+    currentPriorityLevel = previousPriorityLevel;
+    isPreformingWork = false;
+  }
+}
 
 // 取消某个任务，把 callback 设置为 null，当这个任务在堆顶的时候，删掉它
 function cancelCallback() {
