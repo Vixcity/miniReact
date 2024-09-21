@@ -1,6 +1,12 @@
 // 实现一个单线程任务调度器
 import { getCurrentTime, isFn } from "../../shared/utils";
-import { peek, pop } from "./SchedulerMinHeap";
+import {
+  lowPriorityTimeout,
+  maxSigned31BitInt,
+  normalPriorityTimeout,
+  userBlockingPriorityTimeout,
+} from "./SchedulerFeatureFlags";
+import { peek, pop, push } from "./SchedulerMinHeap";
 import {
   PriorityLevel,
   NoPriority,
@@ -25,6 +31,9 @@ export type Task = {
 // 任务池，最小堆结构
 const taskQueue: Array<Task> = [];
 
+// 标记 task 的唯一性
+let taskIdCounter = 0;
+
 let currentTask: Task | null = null;
 let currentPriorityLevel: PriorityLevel = NoPriority;
 
@@ -32,10 +41,10 @@ let currentPriorityLevel: PriorityLevel = NoPriority;
 let startTime = -1;
 // 时间切片，这个是函数可执行的时间段
 let frameInterval = 5;
-// 记录是否正在执行任务
-let isPreformingWork = false;
-
+// 记录是否正在执行任务，是否有work在进行
 // 锁，防止重复调度
+let isPreformingWork = false;
+let isHostCallbackScheduled = false;
 
 // TODO: 实现 shouldYieldToHost 函数
 function shouldYieldToHost() {
@@ -50,8 +59,53 @@ function shouldYieldToHost() {
 
 // 任务调度器入口函数
 function scheduleCallback(priorityLevel: PriorityLevel, callback: Callback) {
-  // TODO: 实现调度器入口函数
+  const startTime = getCurrentTime();
+
+  let timeout: number;
+  switch (priorityLevel) {
+    case ImmediatePriority:
+      // 立马超时，SVVVVVVVIP
+      timeout = -1;
+      break;
+    case UserBlockingPriority:
+      // 最终超时，VIP
+      timeout = userBlockingPriorityTimeout;
+      break;
+    case IdlePriority:
+      // 永不超时
+      timeout = maxSigned31BitInt;
+      break;
+    case LowPriority:
+      // 最终超时
+      timeout = lowPriorityTimeout;
+      break;
+    default:
+      timeout = normalPriorityTimeout;
+      break;
+  }
+
+  // 过期时间，理论上是等待任务执行的时间
+  const expirationTime = startTime + timeout;
+
+  const newTask: Task = {
+    id: taskIdCounter++,
+    callback,
+    priorityLevel,
+    startTime: startTime,
+    expirationTime,
+    sortIndex: -1,
+  };
+
+  newTask.sortIndex = expirationTime;
+  push(taskQueue, newTask);
+
+  if (!isHostCallbackScheduled && !isPreformingWork) {
+    isHostCallbackScheduled = true;
+    requestHostCallback();
+  }
 }
+
+function requestHostCallback() {}
 
 // 取消某个任务，把 callback 设置为 null，当这个任务在堆顶的时候，删掉它
 function cancelCallback() {
